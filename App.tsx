@@ -35,8 +35,13 @@ import {
 // --- MOCK BACKEND SERVICE ---
 const AuthService = {
   login: async (username: string): Promise<UserSession> => {
-    await new Promise(resolve => setTimeout(resolve, 600)); 
+    // Simulate network delay slightly faster for UX
+    await new Promise(resolve => setTimeout(resolve, 400)); 
+    
     const key = `civil_tracker_${username.toLowerCase().trim()}`;
+    // Save as active user for persistence
+    localStorage.setItem('civil_tracker_active_user', username);
+
     const stored = localStorage.getItem(key);
     if (stored) return JSON.parse(stored);
     
@@ -48,6 +53,20 @@ const AuthService = {
     };
     localStorage.setItem(key, JSON.stringify(newUser));
     return newUser;
+  },
+
+  // New method to restore session
+  checkSession: async (): Promise<UserSession | null> => {
+    const activeUser = localStorage.getItem('civil_tracker_active_user');
+    if (!activeUser) return null;
+    
+    // We can reuse the login logic or fetch directly to avoid delay
+    const key = `civil_tracker_${activeUser.toLowerCase().trim()}`;
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    return null;
   },
 
   saveProgress: (username: string, codes: string[], electives: Elective[]) => {
@@ -74,7 +93,13 @@ const AuthService = {
 
     localStorage.setItem(newKey, JSON.stringify(newSession));
     localStorage.removeItem(oldKey);
+    // Update active user reference
+    localStorage.setItem('civil_tracker_active_user', newUsername);
     return newSession;
+  },
+
+  logout: () => {
+    localStorage.removeItem('civil_tracker_active_user');
   }
 };
 
@@ -576,6 +601,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<UserSession | null>(null);
   const [usernameInput, setUsernameInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true); // New state to prevent flash
   const [completedCodes, setCompletedCodes] = useState<Set<string>>(new Set());
   const [electives, setElectives] = useState<Elective[]>([]);
   const [activeTab, setActiveTab] = useState<'board' | 'stats'>('board');
@@ -608,6 +634,25 @@ const App: React.FC = () => {
     return { completedHours, totalHours, percentage };
   }, [analysis, electives]);
 
+  // Restore session on mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const session = await AuthService.checkSession();
+        if (session) {
+          setUser(session);
+          setCompletedCodes(new Set(session.completedCodes));
+          setElectives(session.electives || []);
+        }
+      } catch (err) {
+        console.error("Failed to restore session", err);
+      } finally {
+        setIsCheckingSession(false);
+      }
+    };
+    restoreSession();
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!usernameInput.trim()) return;
@@ -623,6 +668,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    AuthService.logout(); // Clear active user key
     setUser(null);
     setCompletedCodes(new Set());
     setElectives([]);
@@ -678,6 +724,15 @@ const App: React.FC = () => {
     setIsEditingProfile(false);
   };
 
+  // Show nothing or a simple loader while checking session to prevent login screen flash
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <Loader2 className="animate-spin text-blue-500" size={40} />
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
@@ -731,39 +786,47 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
       {/* Top Navigation */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 h-auto md:h-14 flex-shrink-0 flex flex-col md:flex-row items-center justify-between px-4 py-2 md:py-0 lg:px-6 shadow-md z-20 gap-3">
-        <div className="flex items-center gap-4 lg:gap-8 w-full md:w-auto justify-between md:justify-start">
-          <div className="flex items-center gap-2 lg:gap-3">
-            <div className="bg-blue-500 p-1.5 rounded-lg">
+      <header className="bg-slate-900 text-white border-b border-slate-800 h-14 flex-shrink-0 flex items-center justify-between px-4 lg:px-6 shadow-md z-20 relative">
+        {/* Left Side: Logo & Tabs */}
+        <div className="flex items-center gap-4">
+          {/* Logo */}
+          <div className="flex items-center gap-2">
+            <div className="bg-blue-500 p-1.5 rounded-lg flex-shrink-0">
               <GraduationCap size={18} />
             </div>
-            <div className="hidden sm:block">
-              <h1 className="font-bold text-sm leading-none">Engenharia Civil</h1>
+            <div className="hidden min-[370px]:block">
+              <h1 className="font-bold text-sm leading-none">Civil</h1>
               <span className="text-[9px] text-slate-400 uppercase tracking-widest">UFSC</span>
             </div>
           </div>
 
+          {/* Divider */}
+          <div className="h-5 w-px bg-slate-700 hidden min-[370px]:block"></div>
+
+          {/* Navigation Tabs */}
           <nav className="flex items-center gap-1 bg-slate-800/50 p-1 rounded-lg">
              <button 
                onClick={() => setActiveTab('board')}
-               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2
+               className={`p-1.5 md:px-3 md:py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2
                  ${activeTab === 'board' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}
                `}
+               title="Acompanhamento do Curso"
              >
-               <LayoutDashboard size={14} /> Acompanhamento do Curso
+               <LayoutDashboard size={18} /> <span className="hidden md:inline">Acompanhamento</span>
              </button>
              <button 
                onClick={() => setActiveTab('stats')}
-               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2
+               className={`p-1.5 md:px-3 md:py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2
                  ${activeTab === 'stats' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}
                `}
+               title="Planejador"
              >
-               <CalendarCheck size={14} /> Planejador
+               <CalendarCheck size={18} /> <span className="hidden md:inline">Planejador</span>
              </button>
           </nav>
         </div>
 
-        {/* Center Progress Bar (Visible on Desktop) */}
+        {/* Center: Desktop Progress */}
         <div className="hidden md:flex items-center gap-3 flex-1 justify-center max-w-xs mx-4">
            <div className="text-[10px] text-slate-400 font-bold whitespace-nowrap">
              {progressStats.percentage}% Concluído
@@ -773,9 +836,10 @@ const App: React.FC = () => {
            </div>
         </div>
         
-        <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+        {/* Right Side: Tools & Profile */}
+        <div className="flex items-center gap-3">
           
-          {/* WhatsApp Button (Header) */}
+          {/* WhatsApp (Desktop) */}
           <a 
             href={whatsappLink}
             target="_blank"
@@ -786,29 +850,25 @@ const App: React.FC = () => {
             <span>Contato</span>
           </a>
 
-          <div className="h-6 w-px bg-slate-700 mx-1 hidden md:block"></div>
-
           {/* User Profile */}
-          <div className="flex items-center gap-2 pl-2">
+          <div className="flex items-center gap-2">
             {isEditingProfile ? (
-              <div className="flex items-center bg-slate-800 rounded-md p-0.5 border border-blue-500/50">
+              <div className="flex items-center bg-slate-800 rounded-md p-0.5 border border-blue-500/50 absolute top-14 right-2 z-50 shadow-xl md:static md:shadow-none md:border-none md:bg-transparent">
                 <input 
-                  className="bg-transparent text-white text-xs px-2 py-1 outline-none w-24"
+                  className="bg-slate-900 text-white text-xs px-2 py-1 outline-none w-24 rounded border border-slate-700"
                   value={editNameInput}
                   onChange={(e) => setEditNameInput(e.target.value)}
                   autoFocus
                 />
-                <button onClick={saveProfileName} className="p-1 hover:text-emerald-400"><Save size={14}/></button>
-                <button onClick={() => setIsEditingProfile(false)} className="p-1 hover:text-red-400"><X size={14}/></button>
+                <button onClick={saveProfileName} className="p-1 text-emerald-400"><Save size={14}/></button>
+                <button onClick={() => setIsEditingProfile(false)} className="p-1 text-red-400"><X size={14}/></button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 group cursor-pointer" onClick={startEditingProfile} title="Clique para editar nome">
-                 <div className="text-right hidden sm:block">
+              <div className="flex items-center gap-2 group cursor-pointer" onClick={startEditingProfile} title="Editar nome">
+                 <div className="text-right hidden md:block">
                    <div className="text-xs font-bold text-slate-200 flex items-center justify-end gap-1">
                      {user.username}
-                     <Pencil size={10} className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400" />
                    </div>
-                   <div className="text-[10px] text-slate-500">Perfil Local</div>
                  </div>
                  <div className="bg-slate-700 p-1.5 rounded-full border border-slate-600">
                    <UserCircle size={18} className="text-slate-300" />
@@ -817,17 +877,14 @@ const App: React.FC = () => {
             )}
           </div>
 
-          <button onClick={handleLogout} className="text-slate-500 hover:text-white transition-colors ml-2" title="Sair">
+          <button onClick={handleLogout} className="text-slate-500 hover:text-white transition-colors" title="Sair">
             <LogOut size={18} />
           </button>
         </div>
 
-        {/* Mobile Progress Bar (Only visible on mobile below header) */}
-        <div className="w-full md:hidden mt-1 flex items-center gap-2">
-           <div className="h-1.5 flex-1 bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 transition-all duration-700" style={{ width: `${progressStats.percentage}%` }}></div>
-           </div>
-           <span className="text-[9px] text-slate-400 font-bold">{progressStats.percentage}%</span>
+        {/* Mobile Progress Bar (Absolute Bottom) */}
+        <div className="absolute bottom-0 left-0 w-full md:hidden h-1 bg-slate-800">
+           <div className="h-full bg-emerald-500 transition-all duration-700" style={{ width: `${progressStats.percentage}%` }}></div>
         </div>
       </header>
 
