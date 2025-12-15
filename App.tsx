@@ -696,7 +696,7 @@ const App: React.FC = () => {
           
           <h1 className="text-2xl font-bold text-center text-white mb-2">Engenharia Civil UFSC</h1>
           <p className="text-center text-slate-400 mb-8 text-xs uppercase tracking-widest font-medium">
-            Rastreador de Currículo Interativo
+            Currículo Interativo Engenharia Civil UFSC
           </p>
 
           <form onSubmit={handleLogin} className="space-y-5">
