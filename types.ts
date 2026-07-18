@@ -30,12 +30,14 @@ export interface Elective {
   id: string;
   name: string;
   hours: number;
-  type: 'discipline' | 'complementary';
+  type: 'discipline' | 'complementary' | 'extension';
 }
 
 export interface UserSession {
   username: string;
   completedCodes: string[];
   electives: Elective[];
+  partialInternshipHours?: number;
+  extensionHours?: number;
   lastLogin: Date;
 }

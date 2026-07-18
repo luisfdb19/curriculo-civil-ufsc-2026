@@ -44,14 +44,14 @@ export const CURRICULUM: Subject[] = [
   // --- FASE 04 ---
   { code: 'ECV2401', name: 'Análise Estrutural I', phase: 4, hours: 54, prerequisites: req('ECV2302') },
   { code: 'ECV2402', name: 'Geoprocessamento', phase: 4, hours: 72, prerequisites: req('ECV2304') },
-  { code: 'ECV2403', name: 'Materiais de Construção I', phase: 4, hours: 54, prerequisites: req('ECV2301') },
+  { code: 'ECV2403', name: 'Materiais de Construção I', phase: 4, hours: 54, prerequisites: req('ECV2301', 'ECV2303') },
   { code: 'ECV2404', name: 'Mecânica dos Sólidos I', phase: 4, hours: 72, prerequisites: req('ECV2302') },
   { code: 'ECV2405', name: 'Sistemas de Transporte', phase: 4, hours: 54, prerequisites: req('ECV2304') },
   { code: 'ENS5101', name: 'Hidráulica', phase: 4, hours: 90, prerequisites: req('EMC5425') },
   { code: 'MTM3103', name: 'Cálculo 3', phase: 4, hours: 72, prerequisites: req('MTM3120') },
 
   // --- FASE 05 ---
-  { code: 'ARQ5515', name: 'Urbanismo', phase: 5, hours: 54, prerequisites: req('ARQ5115', 'ECV2402') },
+  { code: 'ARQ5515', name: 'Urbanismo', phase: 5, hours: 54, prerequisites: req('ECV2402') },
   { code: 'ECV2501', name: 'Ações e Segurança nas Estruturas', phase: 5, hours: 36, prerequisites: req('INE5108') },
   { code: 'ECV2502', name: 'Estradas I', phase: 5, hours: 54, prerequisites: req('ECV2402') },
   { code: 'ECV2503', name: 'Física das Construções', phase: 5, hours: 54, prerequisites: req('EMC5425', 'FSC5122') },
@@ -61,7 +61,7 @@ export const CURRICULUM: Subject[] = [
   { code: 'INE5202', name: 'Cálculo Numérico em Computadores', phase: 5, hours: 72, prerequisites: req('INE5201', 'MTM3103') },
 
   // --- FASE 06 ---
-  { code: 'ECV2601', name: 'Análise Estrutural II', phase: 6, hours: 36, prerequisites: req('ECV2401', 'ECV2505', 'MTM3131') },
+  { code: 'ECV2601', name: 'Análise Estrutural II', phase: 6, hours: 36, prerequisites: req('ECV2401', 'ECV2505', 'MTM3121') },
   { code: 'ECV2602', name: 'Concreto Armado I', phase: 6, hours: 54, prerequisites: req('ECV2401', 'ECV2404', 'ECV2501') },
   { code: 'ECV2603', name: 'Engenharia de Tráfego', phase: 6, hours: 54, prerequisites: req('ECV2405') },
   { code: 'ECV2604', name: 'Instalações Prediais I', phase: 6, hours: 54, prerequisites: req('ARQ5115', 'ENS5101') },
@@ -94,9 +94,9 @@ export const CURRICULUM: Subject[] = [
     phase: 9, 
     hours: 72,
     prerequisites: req(
-      'ARQ5515', 'ECV2503', 'ECV2603', 'ECV2604', 
-      'ECV2701', 'ECV2703', 'ECV2705', 'ECV2706', 'ECV2707',
-      'ECV2801', 'ECV2802', 'ECV2803', 'ENS5106', 'INE5202'
+      'ARQ5515', 'ECV2101', 'ECV2503', 'ECV2603', 'ECV2604', 
+      'ECV2701', 'ECV2703', 'ECV2704', 'ECV2705', 'ECV2706', 'ECV2707',
+      'ECV2801', 'ECV2802', 'ECV2803', 'ENS5106', 'INE5202', 'MTM3131'
     ) 
   },
 

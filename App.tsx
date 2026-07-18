@@ -69,18 +69,19 @@ const AuthService = {
     return null;
   },
 
-  saveProgress: (username: string, codes: string[], electives: Elective[]) => {
+  saveProgress: (username: string, codes: string[], electives: Elective[], partialInternshipHours: number) => {
     const key = `civil_tracker_${username.toLowerCase().trim()}`;
     const session: UserSession = {
       username,
       completedCodes: codes,
       electives: electives || [],
+      partialInternshipHours,
       lastLogin: new Date()
     };
     localStorage.setItem(key, JSON.stringify(session));
   },
 
-  renameUser: (oldUsername: string, newUsername: string, codes: string[], electives: Elective[]): UserSession => {
+  renameUser: (oldUsername: string, newUsername: string, codes: string[], electives: Elective[], partialInternshipHours: number): UserSession => {
     const oldKey = `civil_tracker_${oldUsername.toLowerCase().trim()}`;
     const newKey = `civil_tracker_${newUsername.toLowerCase().trim()}`;
     
@@ -88,6 +89,7 @@ const AuthService = {
       username: newUsername,
       completedCodes: codes,
       electives: electives,
+      partialInternshipHours,
       lastLogin: new Date()
     };
 
@@ -109,12 +111,14 @@ interface PhaseColumnProps {
   phase: number;
   subjects: SubjectAnalysis[];
   onToggle: (code: string) => void;
+  internshipValidated: boolean;
 }
 
 const PhaseColumn: React.FC<PhaseColumnProps> = ({ 
   phase, 
   subjects, 
-  onToggle 
+  onToggle,
+  internshipValidated
 }) => {
   return (
     <div className="flex-shrink-0 w-[320px] flex flex-col h-full bg-slate-50/50 border-r border-slate-200">
@@ -185,7 +189,14 @@ const PhaseColumn: React.FC<PhaseColumnProps> = ({
                         {subject.code}
                       </span>
                       <span className="opacity-30 mr-1.5">|</span>
-                      <span className="font-medium">{subject.name}</span>
+                      <span className="font-medium">
+                        {subject.name}
+                        {subject.code === 'ECV2000' && internshipValidated && (
+                          <span className="ml-2 text-[10px] text-teal-600 font-bold bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 whitespace-nowrap">
+                            [Dispensada via Extensão]
+                          </span>
+                        )}
+                      </span>
                     </div>
                     {/* Hours Tag */}
                     <span className="flex-shrink-0 ml-2 text-[9px] font-medium bg-slate-100 px-1.5 py-0.5 rounded text-slate-400 whitespace-nowrap">
@@ -227,13 +238,17 @@ const RecommendationsView = ({
   completedCodesSet,
   electives,
   onAddElective,
-  onRemoveElective
+  onRemoveElective,
+  partialInternshipHours,
+  onUpdateInternshipHours
 }: { 
   analysis: Record<number, SubjectAnalysis[]>, 
   completedCodesSet: Set<string>,
   electives: Elective[],
-  onAddElective: (hours: number, type: 'discipline' | 'complementary', name: string) => void,
-  onRemoveElective: (id: string) => void
+  onAddElective: (hours: number, type: 'discipline' | 'complementary' | 'extension', name: string) => void,
+  onRemoveElective: (id: string) => void,
+  partialInternshipHours: number,
+  onUpdateInternshipHours: (hours: number) => void
 }) => {
   const allSubjects = Object.values(analysis).flat();
   const available = allSubjects.filter(s => s.status === 'available');
@@ -245,14 +260,22 @@ const RecommendationsView = ({
   // Elective Form State
   const [isElectivesOpen, setIsElectivesOpen] = useState(true);
   const [electiveName, setElectiveName] = useState('');
-  const [electiveType, setElectiveType] = useState<'discipline' | 'complementary'>('discipline');
+  const [electiveType, setElectiveType] = useState<'discipline' | 'complementary' | 'extension'>('discipline');
   const [customHours, setCustomHours] = useState('54');
 
   // Stats Calculations
   const totalMandatoryHours = allSubjects.reduce((acc, s) => acc + s.subject.hours, 0);
   const completedMandatoryHours = completed.reduce((acc, s) => acc + s.subject.hours, 0);
   
-  const completedElectiveHours = electives.reduce((acc, e) => acc + e.hours, 0);
+  const disciplineElectiveHours = electives.filter(e => e.type === 'discipline').reduce((acc, e) => acc + e.hours, 0);
+  const rawComplementaryHours = electives.filter(e => e.type === 'complementary').reduce((acc, e) => acc + e.hours, 0);
+  const validComplementaryHours = Math.min(rawComplementaryHours, MAX_COMPLEMENTARY_HOURS);
+  const extensionElectiveHours = electives.filter(e => e.type === 'extension').reduce((acc, e) => acc + e.hours, 0);
+
+  // Extension rule: if total extension hours >= 108, count 108h as elective credit
+  const extensionElectiveCredit = extensionElectiveHours >= 108 ? 108 : 0;
+
+  const completedElectiveHours = disciplineElectiveHours + validComplementaryHours + extensionElectiveCredit;
   const validElectiveHours = Math.min(completedElectiveHours, REQUIRED_ELECTIVE_HOURS);
   
   const totalCourseHours = totalMandatoryHours + REQUIRED_ELECTIVE_HOURS;
@@ -261,9 +284,7 @@ const RecommendationsView = ({
   const progressPercent = Math.round((totalCompletedHours / totalCourseHours) * 100);
 
   // Complementary Hours Check
-  const complementaryHours = electives
-    .filter(e => e.type === 'complementary')
-    .reduce((acc, e) => acc + e.hours, 0);
+  const complementaryHours = rawComplementaryHours;
 
   // Calculate minimum remaining semesters using simulation
   const minSemestersRemaining = useMemo(() => {
@@ -455,6 +476,7 @@ const RecommendationsView = ({
                         >
                            <option value="discipline">Disciplina</option>
                            <option value="complementary">Complementar</option>
+                           <option value="extension">Extensão</option>
                         </select>
                         
                         {/* Custom Input for Hours with hidden spin buttons */}
@@ -498,8 +520,8 @@ const RecommendationsView = ({
                             <div>
                                <div className="text-sm font-medium text-slate-800">{e.name}</div>
                                <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
-                                  <span className={`w-1.5 h-1.5 rounded-full ${e.type === 'complementary' ? 'bg-amber-400' : 'bg-purple-400'}`}></span>
-                                  {e.type === 'complementary' ? 'Atv. Complementar' : 'Disciplina'}
+                                  <span className={`w-1.5 h-1.5 rounded-full ${e.type === 'complementary' ? 'bg-amber-400' : e.type === 'extension' ? 'bg-teal-400' : 'bg-purple-400'}`}></span>
+                                  {e.type === 'complementary' ? 'Atv. Complementar' : e.type === 'extension' ? 'Extensão' : 'Disciplina'}
                                </div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -507,14 +529,75 @@ const RecommendationsView = ({
                                <button onClick={() => onRemoveElective(e.id)} className="text-slate-300 hover:text-red-500 transition-colors">
                                   <Trash2 size={14} />
                                </button>
-                            </div>
+                           </div>
                          </li>
                       ))}
                    </ul>
                 )}
-             </div>
-          </div>
+              </div>
+           </div>
         )}
+      </div>
+
+      {/* Extension & Internship Panel */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-4 md:p-6 space-y-4">
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <CheckSquare className="text-teal-500" size={20} />
+          Validação de Estágio e Extensão
+        </h2>
+        
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <label className="block text-sm font-bold text-slate-700">Horas de Estágio Obrigatório Cumpridas</label>
+            <div className="flex items-center gap-3">
+              <input 
+                type="number"
+                value={partialInternshipHours}
+                onChange={(e) => onUpdateInternshipHours(parseInt(e.target.value) || 0)}
+                className="w-32 text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                placeholder="Ex: 216"
+              />
+              <span className="text-sm text-slate-500">horas</span>
+            </div>
+            <p className="text-xs text-slate-500">
+              O estágio obrigatório padrão é 540h (ECV2000). Caso opte pela regra de extensão, você pode cumprir apenas 216h de estágio.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
+            <h3 className="text-sm font-bold text-slate-700">Painel de Validações</h3>
+            
+            <div className={`p-3 rounded-lg border ${extensionElectiveHours >= 108 ? 'bg-teal-50 border-teal-200' : 'bg-white border-slate-200'}`}>
+              <div className="text-xs font-bold mb-1">Regra de Extensão (108h)</div>
+              {extensionElectiveHours >= 108 ? (
+                <div className="text-xs text-teal-700 flex items-center gap-1"><CheckCircle2 size={14} /> ✅ Cumprido - 108h validadas como optativas</div>
+              ) : (
+                <div className="text-xs text-slate-500">Faltam {108 - extensionElectiveHours}h de extensão para validar 108h de optativas.</div>
+              )}
+              <div className="h-1.5 w-full bg-slate-200 rounded-full mt-2 overflow-hidden">
+                <div className="h-full bg-teal-500" style={{ width: `${Math.min(100, (extensionElectiveHours / 108) * 100)}%` }} />
+              </div>
+            </div>
+
+            <div className={`p-3 rounded-lg border ${(extensionElectiveHours >= 432 && partialInternshipHours >= 216) ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'}`}>
+              <div className="text-xs font-bold mb-1">Regra de Estágio (432h ext + 216h est)</div>
+              {(extensionElectiveHours >= 432 && partialInternshipHours >= 216) ? (
+                <div className="text-xs text-emerald-700 flex items-center gap-1"><CheckCircle2 size={14} /> ✅ Cumprido - ECV2000 validado (540h)</div>
+              ) : (
+                <div className="text-xs text-slate-500 space-y-1">
+                  <div>Extensão: {extensionElectiveHours}/432h</div>
+                  <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-400" style={{ width: `${Math.min(100, (extensionElectiveHours / 432) * 100)}%` }} />
+                  </div>
+                  <div>Estágio: {partialInternshipHours}/216h</div>
+                  <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-400" style={{ width: `${Math.min(100, (partialInternshipHours / 216) * 100)}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Simulator List */}
@@ -604,6 +687,7 @@ const App: React.FC = () => {
   const [isCheckingSession, setIsCheckingSession] = useState(true); // New state to prevent flash
   const [completedCodes, setCompletedCodes] = useState<Set<string>>(new Set());
   const [electives, setElectives] = useState<Elective[]>([]);
+  const [partialInternshipHours, setPartialInternshipHours] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<'board' | 'stats'>('board');
   
   // Edit Profile State
@@ -624,7 +708,12 @@ const App: React.FC = () => {
       .reduce((acc, s) => acc + s.subject.hours, 0);
     
     // Elective math
-    const currentElectiveHours = electives.reduce((acc, e) => acc + e.hours, 0);
+    const disciplineHours = electives.filter(e => e.type === 'discipline').reduce((acc, e) => acc + e.hours, 0);
+    const rawComplementary = electives.filter(e => e.type === 'complementary').reduce((acc, e) => acc + e.hours, 0);
+    const validComplementary = Math.min(rawComplementary, MAX_COMPLEMENTARY_HOURS);
+    const extensionHrs = electives.filter(e => e.type === 'extension').reduce((acc, e) => acc + e.hours, 0);
+    const extensionCredit = extensionHrs >= 108 ? 108 : 0;
+    const currentElectiveHours = disciplineHours + validComplementary + extensionCredit;
     const validElectiveHours = Math.min(currentElectiveHours, REQUIRED_ELECTIVE_HOURS);
 
     const totalHours = totalMandatoryHours + REQUIRED_ELECTIVE_HOURS;
@@ -643,6 +732,7 @@ const App: React.FC = () => {
           setUser(session);
           setCompletedCodes(new Set(session.completedCodes));
           setElectives(session.electives || []);
+          setPartialInternshipHours(session.partialInternshipHours || 0);
         }
       } catch (err) {
         console.error("Failed to restore session", err);
@@ -662,6 +752,7 @@ const App: React.FC = () => {
       setUser(session);
       setCompletedCodes(new Set(session.completedCodes));
       setElectives(session.electives || []);
+      setPartialInternshipHours(session.partialInternshipHours || 0);
     } finally {
       setLoading(false);
     }
@@ -672,6 +763,7 @@ const App: React.FC = () => {
     setUser(null);
     setCompletedCodes(new Set());
     setElectives([]);
+    setPartialInternshipHours(0);
     setUsernameInput('');
     setActiveTab('board');
   };
@@ -683,10 +775,24 @@ const App: React.FC = () => {
     else newSet.add(code);
     
     setCompletedCodes(newSet);
-    AuthService.saveProgress(user.username, Array.from(newSet) as string[], electives);
+    AuthService.saveProgress(user.username, Array.from(newSet) as string[], electives, partialInternshipHours);
   };
 
-  const addElective = (hours: number, type: 'discipline' | 'complementary', name: string) => {
+  const extensionElectiveHours = electives.filter(e => e.type === 'extension').reduce((acc, e) => acc + e.hours, 0);
+  const internshipValidated = extensionElectiveHours >= 432 && partialInternshipHours >= 216;
+
+  useEffect(() => {
+    if (internshipValidated && !completedCodes.has('ECV2000')) {
+      const newSet = new Set(completedCodes);
+      newSet.add('ECV2000');
+      setCompletedCodes(newSet);
+      if (user) {
+         AuthService.saveProgress(user.username, Array.from(newSet), electives, partialInternshipHours);
+      }
+    }
+  }, [internshipValidated, completedCodes, electives, partialInternshipHours, user]);
+
+  const addElective = (hours: number, type: 'discipline' | 'complementary' | 'extension', name: string) => {
     if (!user) return;
     const newElective: Elective = {
       id: Date.now().toString(),
@@ -696,14 +802,20 @@ const App: React.FC = () => {
     };
     const newElectives = [...electives, newElective];
     setElectives(newElectives);
-    AuthService.saveProgress(user.username, Array.from(completedCodes), newElectives);
+    AuthService.saveProgress(user.username, Array.from(completedCodes), newElectives, partialInternshipHours);
   };
 
   const removeElective = (id: string) => {
     if (!user) return;
     const newElectives = electives.filter(e => e.id !== id);
     setElectives(newElectives);
-    AuthService.saveProgress(user.username, Array.from(completedCodes), newElectives);
+    AuthService.saveProgress(user.username, Array.from(completedCodes), newElectives, partialInternshipHours);
+  };
+
+  const updateInternshipHours = (hours: number) => {
+    if (!user) return;
+    setPartialInternshipHours(hours);
+    AuthService.saveProgress(user.username, Array.from(completedCodes), electives, hours);
   };
 
   const startEditingProfile = () => {
@@ -719,7 +831,7 @@ const App: React.FC = () => {
       return;
     }
     
-    const newSession = AuthService.renameUser(user.username, editNameInput.trim(), Array.from(completedCodes), electives);
+    const newSession = AuthService.renameUser(user.username, editNameInput.trim(), Array.from(completedCodes), electives, partialInternshipHours);
     setUser(newSession);
     setIsEditingProfile(false);
   };
@@ -901,6 +1013,7 @@ const App: React.FC = () => {
                 phase={phase} 
                 subjects={analysis[phase] || []}
                 onToggle={toggleSubject}
+                internshipValidated={internshipValidated}
               />
             ))}
             <div className="w-8 flex-shrink-0 bg-slate-50/50 border-r border-transparent"></div>
@@ -913,6 +1026,8 @@ const App: React.FC = () => {
                electives={electives}
                onAddElective={addElective}
                onRemoveElective={removeElective}
+               partialInternshipHours={partialInternshipHours}
+               onUpdateInternshipHours={updateInternshipHours}
              />
           </div>
         )}
